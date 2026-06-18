@@ -1,4 +1,4 @@
-import { Plane, Calendar, Users, DollarSign, Sun, MapPin } from 'lucide-react'
+import { Plane, Calendar, Users, IndianRupee, Sun, MapPin } from 'lucide-react'
 import { Itinerary } from '../../types/itinerary'
 
 interface Props {
@@ -26,16 +26,16 @@ export default function TripSummary({ itinerary }: Props) {
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
-          icon={<DollarSign className="w-4 h-4 text-green-400" />}
+          icon={<IndianRupee className="w-4 h-4 text-green-400" />}
           label="Est. Total"
-          value={`$${summary.estimated_total_cost?.toLocaleString() ?? '—'}`}
-          sub={`Budget: $${summary.budget_total?.toLocaleString() ?? '—'}`}
+          value={`₹${summary.estimated_total_cost?.toLocaleString() ?? '—'}`}
+          sub={`Budget: ₹${summary.budget_total?.toLocaleString() ?? '—'}`}
           color="green"
         />
         <StatCard
           icon={<Plane className="w-4 h-4 text-blue-400" />}
           label="Flights"
-          value={`$${flights?.outbound?.total_price?.toLocaleString() ?? '—'}`}
+          value={`₹${flights?.outbound?.total_price?.toLocaleString() ?? '—'}`}
           sub={`${flights?.outbound?.airline ?? ''} · ${flights?.outbound?.stops ?? 0} stop(s)`}
           color="blue"
         />
@@ -43,7 +43,7 @@ export default function TripSummary({ itinerary }: Props) {
           icon={<MapPin className="w-4 h-4 text-purple-400" />}
           label="Hotel"
           value={accommodation?.name?.split(' ').slice(0, 2).join(' ') ?? '—'}
-          sub={`$${accommodation?.price_per_night ?? '—'}/night · ${accommodation?.rating ?? '—'}★`}
+          sub={`₹${accommodation?.price_per_night ?? '—'}/night · ${accommodation?.rating ?? '—'}★`}
           color="purple"
         />
         <StatCard

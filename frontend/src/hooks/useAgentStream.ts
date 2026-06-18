@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { StreamMessage } from '../types/itinerary'
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+const WS_URL = import.meta.env.VITE_WS_URL || 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'ws://localhost:8000'
+    : 'wss://travel-agent-backend-b986.onrender.com')
 
 export type StreamStatus = 'idle' | 'connecting' | 'running' | 'complete' | 'error'
 

@@ -79,11 +79,17 @@ export default function AgentThinking({ messages, status, isPlanning, brief }: P
           if (msg.type === 'tool_call') {
             const colorClass = TOOL_COLORS[msg.tool || ''] || 'text-slate-400 bg-slate-500/10'
             const icon = TOOL_ICONS[msg.tool || ''] || <Search className="w-3.5 h-3.5" />
+            const isFinished = messages.slice(i + 1).some(
+              (laterMsg) => laterMsg.type === 'tool_result' && laterMsg.tool === msg.tool
+            ) || status === 'complete' || status === 'error'
+
             return (
               <div key={i} className={`flex items-start gap-2 rounded-lg px-3 py-2 ${colorClass}`}>
                 <span className="mt-0.5 flex-shrink-0">{icon}</span>
                 <span className="text-xs leading-relaxed">{msg.message}</span>
-                <Loader2 className="w-3 h-3 animate-spin ml-auto flex-shrink-0 mt-0.5 opacity-60" />
+                {!isFinished && (
+                  <Loader2 className="w-3 h-3 animate-spin ml-auto flex-shrink-0 mt-0.5 opacity-60" />
+                )}
               </div>
             )
           }

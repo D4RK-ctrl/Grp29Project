@@ -73,7 +73,7 @@ export default function ActivitySegment({ event }: Props) {
                 <span className="text-slate-600 text-xs">→ {event.end_time}</span>
               )}
               {event.price_per_person !== undefined && event.price_per_person > 0 && (
-                <span className="text-slate-500 text-xs ml-auto">${event.price_per_person}/person</span>
+                <span className="text-slate-500 text-xs ml-auto">₹{event.price_per_person}/person</span>
               )}
             </div>
             <p className="text-white font-semibold mt-0.5">{event.title}</p>

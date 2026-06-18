@@ -2,7 +2,10 @@ import { useState } from 'react'
 import axios from 'axios'
 import { Trip } from '../types/itinerary'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:8000'
+    : 'https://travel-agent-backend-b986.onrender.com')
 
 export function useTrip() {
   const [trip, setTrip] = useState<Trip | null>(null)

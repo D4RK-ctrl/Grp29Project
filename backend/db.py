@@ -7,7 +7,9 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./trips.db"
-    ANTHROPIC_API_KEY: str = ""
+    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
+    LLM_MODEL: str = "llama-3.3-70b-versatile"
     FOURSQUARE_API_KEY: str = ""
     YELP_API_KEY: str = ""
     TAVILY_API_KEY: str = ""
@@ -15,6 +17,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

@@ -45,7 +45,7 @@ export default function TripDashboard() {
     setChangeStreamId(null)
   }
 
-  const isPlanning = trip?.status === 'planning' || (!trip?.itinerary && status === 'running')
+  const isPlanning = trip?.status === 'planning'
   const itinerary = trip?.itinerary
 
   return (

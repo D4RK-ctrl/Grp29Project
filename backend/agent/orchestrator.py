@@ -3,17 +3,86 @@ from __future__ import annotations
 import json
 import asyncio
 import re
-from anthropic import AsyncAnthropic
+import httpx
+import logging
 from .tools import execute_tool, TOOL_DEFINITIONS
 from .prompts import PLANNING_PROMPT, CHANGE_PROMPT
 from db import settings
 
-client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+logger = logging.getLogger(__name__)
 
-MODEL = "claude-sonnet-4-6"
+def convert_to_openai_tools(anthropic_tools: list) -> list:
+    openai_tools = []
+    for tool in anthropic_tools:
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool.get("input_schema", {})
+            }
+        })
+    return openai_tools
 
-# Our TOOL_DEFINITIONS already use Anthropic's {name, description, input_schema} format.
-ANTHROPIC_TOOLS = TOOL_DEFINITIONS
+OPENAI_TOOLS = convert_to_openai_tools(TOOL_DEFINITIONS)
+
+
+async def call_llm_api(
+    messages: list,
+    tools: list = None,
+    json_mode: bool = False,
+) -> dict:
+    """Calls any OpenAI-compatible API (like Groq, OpenRouter, OpenAI, etc.) with retry and backoff."""
+    api_key = settings.LLM_API_KEY
+    base_url = settings.LLM_BASE_URL.rstrip('/')
+    model = settings.LLM_MODEL
+    
+    url = f"{base_url}/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+    }
+    
+    if tools:
+        payload["tools"] = tools
+        
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+        
+    backoff = 2.0
+    max_retries = 5
+    
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for attempt in range(max_retries):
+            try:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    return resp.json()
+                elif resp.status_code == 429:
+                    print(f"[LLM API] 429 Rate Limited. Retrying in {backoff}s... (Attempt {attempt+1}/{max_retries})")
+                    await asyncio.sleep(backoff)
+                    backoff *= 2.0
+                elif resp.status_code >= 500:
+                    print(f"[LLM API] Server Error {resp.status_code}. Retrying in {backoff}s... (Attempt {attempt+1}/{max_retries})")
+                    await asyncio.sleep(backoff)
+                    backoff *= 2.0
+                else:
+                    print(f"[LLM API] HTTP {resp.status_code}: {resp.text}")
+                    resp.raise_for_status()
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise
+                print(f"[LLM API] Error: {e}. Retrying in {backoff}s... (Attempt {attempt+1}/{max_retries})")
+                await asyncio.sleep(backoff)
+                backoff *= 2.0
+                
+    raise Exception("Max retries exceeded calling LLM API")
 
 
 _TOOL_LABELS = {
@@ -66,68 +135,81 @@ async def _agent_loop(
     queue: asyncio.Queue,
     max_iters: int = 20,
 ) -> dict | None:
-    messages = [{"role": "user", "content": user_message}]
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ]
 
     for _ in range(max_iters):
-        response = await client.messages.create(
-            model=MODEL,
-            max_tokens=16000,
-            system=system_prompt,
-            tools=ANTHROPIC_TOOLS,
+        response = await call_llm_api(
             messages=messages,
+            tools=OPENAI_TOOLS,
         )
 
-        # No tool use → final answer; pull JSON from the text blocks
-        if response.stop_reason != "tool_use":
-            text = "".join(
-                block.text for block in response.content if block.type == "text"
-            )
-            parsed = _extract_json(text)
+        choices = response.get("choices", [])
+        if not choices:
+            raise Exception("No choices returned from LLM API")
+
+        choice = choices[0]
+        choice_message = choice.get("message", {})
+        content = choice_message.get("content") or ""
+        tool_calls = choice_message.get("tool_calls") or []
+
+        # No tool use → final answer; pull JSON from the text
+        if not tool_calls:
+            parsed = _extract_json(content)
             if parsed is None:
                 print("─" * 60)
                 print(f"[agent] JSON extraction FAILED")
-                print(f"[agent] stop_reason: {response.stop_reason}")
-                print(f"[agent] text length: {len(text)} chars")
-                print(f"[agent] last 500 chars:\n{text[-500:]}")
+                print(f"[agent] text length: {len(content)} chars")
+                print(f"[agent] last 500 chars:\n{content[-500:]}")
                 print("─" * 60)
             return parsed
 
-        # Record the assistant turn (text + tool_use blocks) verbatim
-        messages.append({"role": "assistant", "content": response.content})
+        # Record assistant's turn in messages history
+        messages.append(choice_message)
 
-        tool_uses = [block for block in response.content if block.type == "tool_use"]
-
-        # Notify the UI about each tool call
-        for tu in tool_uses:
+        # Notify UI about tool calls
+        for tc in tool_calls:
+            func = tc.get("function", {})
+            name = func.get("name", "")
+            args = _safe_args(func.get("arguments", ""))
             await queue.put({
                 "type": "tool_call",
-                "tool": tu.name,
-                "message": _label(tu.name, tu.input or {}),
+                "tool": name,
+                "message": _label(name, args),
             })
 
-        # Execute all tool calls concurrently
+        # Execute concurrently
         results = await asyncio.gather(
-            *[execute_tool(tu.name, tu.input or {}) for tu in tool_uses],
+            *[
+                execute_tool(
+                    tc.get("function", {}).get("name", ""),
+                    _safe_args(tc.get("function", {}).get("arguments", ""))
+                )
+                for tc in tool_calls
+            ],
             return_exceptions=True,
         )
 
-        # Stream results to the UI and feed them back to the model
-        tool_result_blocks = []
-        for tu, result in zip(tool_uses, results):
+        # Stream result and feed it back to LLM
+        for tc, result in zip(tool_calls, results):
+            func = tc.get("function", {})
+            name = func.get("name", "")
             if isinstance(result, Exception):
                 result = {"error": str(result)}
             await queue.put({
                 "type": "tool_result",
-                "tool": tu.name,
+                "tool": name,
                 "summary": result.get("summary", "Done") if isinstance(result, dict) else "Done",
             })
-            tool_result_blocks.append({
-                "type": "tool_result",
-                "tool_use_id": tu.id,
-                "content": json.dumps(result),
+            
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.get("id"),
+                "name": name,
+                "content": json.dumps(result)
             })
-
-        messages.append({"role": "user", "content": tool_result_blocks})
 
     return None
 
@@ -241,17 +323,22 @@ async def _resolve_conflicts(
         "Add a 'changes_summary' field describing what you moved. "
         "Return ONLY the complete corrected JSON itinerary, no prose."
     )
-    response = await client.messages.create(
-        model=MODEL,
-        max_tokens=16000,
-        system=prompt,
-        messages=[{
+    messages = [
+        {"role": "system", "content": prompt},
+        {
             "role": "user",
             "content": (
                 f"Conflicts to fix:\n{conflict_desc}\n\n"
                 f"Itinerary:\n{json.dumps(itinerary)}"
-            ),
-        }],
+            )
+        }
+    ]
+    response = await call_llm_api(
+        messages=messages,
+        json_mode=True,
     )
-    text = "".join(block.text for block in response.content if block.type == "text")
-    return _extract_json(text)
+    choices = response.get("choices", [])
+    if not choices:
+        return None
+    content = choices[0].get("message", {}).get("content") or ""
+    return _extract_json(content)
