@@ -11,6 +11,22 @@ agent revises the plan.
 
 ---
 
+## Features
+
+- **Free-text brief → full itinerary** — no rigid forms; describe the trip in a sentence.
+- **Tool-calling agent** — researches flights, hotels, activities, restaurants and weather
+  through dedicated tools, with a Tavily web-search fallback whenever a provider key is absent.
+- **Live progress streaming** — the UI shows each `status` / `tool_call` / `tool_result` event
+  over a WebSocket as the agent works, instead of a blank spinner.
+- **Conflict detection** — a post-pass flags and auto-resolves overlapping time slots in the
+  generated day plan.
+- **Conversational revisions** — refine an existing plan in plain English and the agent
+  re-plans only what changed.
+- **Graceful degradation** — only `LLM_API_KEY` is required to run; every external data source
+  is optional.
+
+---
+
 ## Architecture
 
 ```
