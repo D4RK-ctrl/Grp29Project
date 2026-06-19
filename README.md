@@ -179,6 +179,18 @@ frontend/
 
 ---
 
+## Troubleshooting
+
+| Symptom | Likely cause / fix |
+|---------|--------------------|
+| `500` on `POST /api/trips` or planning never completes | `LLM_API_KEY` is missing or invalid — check `backend/.env` and the backend logs. |
+| Agent runs but flights/hotels look generic | No `TAVILY_API_KEY` set, so search falls back to the model's own knowledge. Add the key for live results. |
+| Frontend can't reach the API | Confirm the backend is on `:8000` and `VITE_API_URL` / `VITE_WS_URL` in `frontend/.env.local` match it. |
+| Live agent feed never updates | WebSocket blocked — in production use `wss://` and make sure proxies allow upgrade connections. |
+| Rate-limit errors from the LLM provider | The orchestrator retries with backoff; persistent `429`s mean you've hit the provider quota. |
+
+---
+
 ## Tech Stack
 
 **Backend:** Python · FastAPI · SQLAlchemy · httpx · Pydantic · WebSockets
